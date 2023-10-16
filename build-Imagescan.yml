@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - apt-get update
+      - apt-get install -y wget apt-transport-https gnupg lsb-release
+      - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      - echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+      - apt-get update
+      - apt-get install -y trivy
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      - trivy --version
+  build:
+    commands:
+      - git clone https://github.com/Akshay0570/ray-llm.git
+      - /usr/local/bin/trivy conf -f json -o trivys.json ${CODEBUILD_SRC_DIR}/Dockerfile
+      - cat trivy1.json
+  post_build:
+    commands:
+      - echo Entered the post_build phase...
+      - echo Build completed on `date`
+artifacts:
+  files: trivy.json
