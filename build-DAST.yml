@@ -1,0 +1,68 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      - docker --version
+  build:
+    commands:
+      - rm -f zap_report.xml || true
+      - ls -lrth
+      - docker run -v $CODEBUILD_SRC_DIR:/zap/wrk/:rw -t owasp/zap2docker-stable zap-full-scan.py -t http://192.168.228.132:81 -g gen.conf -x zap_report.xml || true
+      #- docker start owasp/zap2docker-stable
+      - cat zap_report.xml
+  post_build:
+    commands:
+      - echo Entered the post_build phase...
+      - echo Build completed on `date`
+artifacts:
+  files: zap_report.xml
+
+
+
+
+  ############################################### Second file ##########################################
+
+version: 0.2
+env:
+  variables:
+    target_url: "http://192.168.228.132:81"
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      #- curl -fsSL https://test.docker.com -o test-docker.sh
+      #- sh test-docker.sh
+      #- groupadd docker
+      #- usermod -aG docker $USER
+      #- newgrp docker
+      #- systemctl enable docker.service
+      #- systemctl enable containerd.service
+      #- sh install-docker.sh --dry-run
+      #- sh install-docker.sh
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      #- docker --version
+      #- service docker status
+      #- sudo systemctl start docker
+      #- sudo systemctl enable docker
+      #- sudo systemctl restart docker
+      #- chmod 777 /var/run/docker.sock
+      # - docker pull owasp/zap2docker-stable
+  build:
+    commands:
+      - rm -f zap_report.xml || true
+      - ls -lrth
+      - docker run -v $CODEBUILD_SRC_DIR:/zap/wrk/:rw -t owasp/zap2docker-stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      - cat zap_report.xml
+  post_build:
+    commands:
+      - echo Entered the post_build phase...
+      - echo Build completed on `date`
+artifacts:
+  files: zap_report.xml
