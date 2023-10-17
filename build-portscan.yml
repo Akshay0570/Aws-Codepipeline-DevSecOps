@@ -1,0 +1,24 @@
+version: 0.2
+env:
+  variables:
+    Nmap: "192.168.228.132"
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      - docker --version
+  build:
+    commands:
+      - rm -f nmap* || true
+      - docker run --rm -v $CODEBUILD_SRC_DIR:/data uzyexe/nmap -sS -sV -oX nmap $Nmap
+      - cat nmap
+  post_build:
+    commands:
+      - echo "Perform post-build steps here"
+      - echo "port scan is completed"
+
+artifacts:
+  files: nmap
