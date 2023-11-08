@@ -1,5 +1,9 @@
 version: 0.2
-
+env:
+  variables:
+    Defectdojo_url: http://10.238.69.213:8080/
+    Defectdojo_token: Token c0f8a858db5026523de359bf315d8284f30f9aa8
+    Path: /usr/bin/trivy
 phases:
   install:
     runtime-versions:
@@ -11,18 +15,38 @@ phases:
       - echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
       - apt-get update
       - apt-get install -y trivy
+      - whereis trivy
   pre_build:
     commands:
       - echo "Perform pre-build steps here"
       - trivy --version
   build:
     commands:
+      - echo "Perform build steps here"
+      - sudo su
       - git clone https://github.com/Akshay0570/ray-llm.git
-      - /usr/local/bin/trivy conf -f json -o trivys.json ${CODEBUILD_SRC_DIR}/Dockerfile
-      - cat trivy1.json
+      - $Path conf -f json -o trivys.json ${CODEBUILD_SRC_DIR}/ray-llm/Dockerfile
+      - pwd
+      - ls -l
+      - chmod 777 trivys.json
+      - echo "File path is $FILE_PATH"
+      - pwd
+      - ls -l 
+      #- cat trivys.json
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@trivys.json" \
+        --form 'engagement=1' \
+        --form 'verified=true' \
+        --form 'active=true' \
+        --form 'lead=1' \
+        --form 'product_name=test-code' \
+        --form 'tags=$BUILD_NUMBER' \
+        --form 'scan_type=Clair Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
   post_build:
     commands:
-      - echo Entered the post_build phase...
-      - echo Build completed on `date`
+      - echo "This is thpost build stage"
+      - echo "Pushed reports to Defectdojo"
 artifacts:
   files: trivy.json
