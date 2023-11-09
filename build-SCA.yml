@@ -33,33 +33,38 @@ phases:
       ####OWASP Depedency Check
       - git clone https://github.com/Akshay0570/ray-llm.git
       - cd dependency-check/bin
-      - $CODEBUILD_SRC_DIR/dependency-check/bin/dependency-check.sh --project "Python" --prettyPrint --format JSON --scan $CODEBUILD_SRC_DIR/ray-llm
+      - $CODEBUILD_SRC_DIR/dependency-check/bin/dependency-check.sh --project "Python" --prettyPrint --format XML --scan $CODEBUILD_SRC_DIR/ray-llm
       - echo "OWASP dependency check analysis status is completed..."; 
-      - ls -lrt && pwd && cat dependency-check-report.json
-      - chmod 775 *
-      - if( cat dependency-check-report.json | grep -i highest); then high_risk_dependency="yes"; else high_risk_dependency="no"; fi
+      - ls -lrt  
+      - pwd  
+      - cat dependency-check-report.xml
+      #- chmod 775 *
+      - if( cat dependency-check-report.xml | grep -i highest); then high_risk_dependency="yes"; else high_risk_dependency="no"; fi
       - echo "high depednecy are " $high_risk_dependency
       - echo "risk is " $risk
       - echo Build completed on `date`
       - echo $CODEBUILD_SRC_DIR
       #- export FILE_PATH=dependency-check-report.json
       - echo "File path is $FILE_PATH"
-      - chmod 777 dependency-check-report.json 
+      #- chmod 777 dependency-check-report.json 
       - ls -l 
       - date +'YYYY-MM-DD' > date.txt
       - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
-      - echo BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - ls -l
+      - cat dependency-check-report.xml 
       - |
-        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@dependency-check-report.json" \
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_Token}" -F "file=@dependency-check-report.xml" \
         --form 'engagement=1' \
-        --form 'verified=true' \
-        --form 'active=true' \
+        --form 'verified=True' \
+        --form 'active=True' \
         --form 'lead=1' \
         --form 'product_name=test-code' \
-        --form 'tags=$BUILD_NUMBER' \
+        --form "tags=$BUILD_NUMBER" \
         --form 'scan_type=Dependency Check Scan' \
         --form 'skip_duplicates=true' \
         --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info' \
       #- chmod 777 $FILE_PATH
       #- ls -l 
   post_build:
@@ -67,5 +72,4 @@ phases:
       - echo Entered the post_build phase...
       - echo Build completed on `date`  
 artifacts:
-  type: zip
-  files: dependency-check-report.json
+  files: dependency-check-report.xml
