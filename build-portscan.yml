@@ -1,24 +1,56 @@
 version: 0.2
 env:
   variables:
-    Nmap: "192.168.228.132"
+    Nmap: "10.238.69.213:8080"
+    Defectdojo_url: http://10.238.69.213:8080/
+    Defectdojo_token: Token c0f8a858db5026523de359bf315d8284f30f9aa8
 phases:
   install:
     runtime-versions:
       python: 3.11
+    commands:
+      #- curl -fsSL https://test.docker.com -o test-docker.sh
+      #- sh test-docker.sh
+      #- groupadd docker
+      #- usermod -aG docker $USER
+      #- newgrp docker
+      #- systemctl enable docker.service
+      #- systemctl enable containerd.service
+      #- sh install-docker.sh --dry-run
+      #- sh install-docker.sh
   pre_build:
     commands:
       - echo "Perform pre-build steps here"
+      #- docker --version
+      #- service docker status
+      #- sudo systemctl start docker
+      #- sudo systemctl enable docker
+      #- sudo systemctl restart docker
       - docker --version
   build:
     commands:
+      - echo "Perform build steps here"
+      - echo $CODEBUILD_SRC_DIR
       - rm -f nmap* || true
-      - docker run --rm -v $CODEBUILD_SRC_DIR:/data uzyexe/nmap -sS -sV -oX nmap $Nmap
-      - cat nmap
+      - docker run --rm -v $CODEBUILD_SRC_DIR:/data uzyexe/nmap -sS -sV -oX nmap.xml $Nmap
+      - ls -l
+      - cat nmap.xml
+      - ls -l
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@nmap.xml" \
+        --form 'engagement=1' \
+        --form 'verified=True' \
+        --form 'active=True' \
+        --form 'product_name=test-code' \
+        --form 'tags=$BUILD_NUMBER' \
+        --form 'scan_type=Nmap Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info'\
   post_build:
     commands:
       - echo "Perform post-build steps here"
       - echo "port scan is completed"
-
+ 
 artifacts:
-  files: nmap
+  files: nmap.xml
