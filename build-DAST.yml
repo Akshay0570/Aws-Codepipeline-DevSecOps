@@ -1,35 +1,9 @@
 version: 0.2
-phases:
-  install:
-    runtime-versions:
-      python: 3.11
-  pre_build:
-    commands:
-      - echo "Perform pre-build steps here"
-      - docker --version
-  build:
-    commands:
-      - rm -f zap_report.xml || true
-      - ls -lrth
-      - docker run -v $CODEBUILD_SRC_DIR:/zap/wrk/:rw -t owasp/zap2docker-stable zap-full-scan.py -t http://192.168.228.132:81 -g gen.conf -x zap_report.xml || true
-      #- docker start owasp/zap2docker-stable
-      - cat zap_report.xml
-  post_build:
-    commands:
-      - echo Entered the post_build phase...
-      - echo Build completed on `date`
-artifacts:
-  files: zap_report.xml
-
-
-
-
-  ############################################### Second file ##########################################
-
-version: 0.2
 env:
   variables:
-    target_url: "http://192.168.228.132:81"
+    target_url: "http://10.238.69.213:8080"
+    Defectdojo_url: http://10.238.69.213:8080/
+    Defectdojo_token: Token c0f8a858db5026523de359bf315d8284f30f9aa8
 phases:
   install:
     runtime-versions:
@@ -47,6 +21,7 @@ phases:
   pre_build:
     commands:
       - echo "Perform pre-build steps here"
+      - docker --version
       #- docker --version
       #- service docker status
       #- sudo systemctl start docker
@@ -58,8 +33,30 @@ phases:
     commands:
       - rm -f zap_report.xml || true
       - ls -lrth
-      - docker run -v $CODEBUILD_SRC_DIR:/zap/wrk/:rw -t owasp/zap2docker-stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      - docker run -u $(id -u):$(id -g) -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      #- docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable zap-baseline.py -t $target_url -g gen.conf -I -x zap_report.xml || true
+      #- docker run --user $(id -u):$(id -g) -v $(pwd):/zap/wrk/:rw --rm -t owasp/zap2docker-stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      #- docker start owasp/zap2docker-stable
       - cat zap_report.xml
+      - ls -l
+      - echo $CODEBUILD_SRC_DIR
+      #- echo "File path is $FILE_PATH"
+      - chmod 777 zap_report.xml 
+      - ls -l 
+      - date +'YYYY-MM-DD' > date.txt
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@zap_report.xml" \
+        --form 'engagement=1' \
+        --form 'verified=True' \
+        --form 'active=True' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=ZAP Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info'\
   post_build:
     commands:
       - echo Entered the post_build phase...
