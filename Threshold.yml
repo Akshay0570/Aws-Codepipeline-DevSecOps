@@ -1,0 +1,97 @@
+version: 0.2
+env:
+  variables:
+    Defectdojo_url: http://10.238.69.213:8080/
+    Defectdojo_token: Token c0f8a858db5026523de359bf315d8284f30f9aa8
+    Path: /usr/bin/trivy
+    url: http://10.238.69.213:8080/api/v2/findings/?tags=&test__tags=$BUILD_NUMBER
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+    commands:
+      - apt-get update
+      - apt-get install -y wget apt-transport-https gnupg lsb-release
+      - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key |
+        gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      - echo "deb [signed-by=/usr/share/keyrings/trivy.gpg]
+        https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" |
+        sudo tee -a /etc/apt/sources.list.d/trivy.list
+      - apt-get update
+      - apt-get install -y trivy
+      - whereis trivy
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      - trivy --version
+  build:
+    commands:
+      - echo "Perform build steps here"
+      - sudo su
+      - git clone https://github.com/Akshay0570/ray-llm.git
+      - $Path conf -f json -o trivys.json ${CODEBUILD_SRC_DIR}/ray-llm/Dockerfile
+      - pwd
+      - ls -l
+      - chmod 777 trivys.json
+      - echo "File path is $FILE_PATH"
+      - pwd
+      - ls -l
+      - cat trivys.json
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@trivys.json" \
+        --form 'engagement=1' \
+        --form 'verified=true' \
+        --form 'active=true' \
+        --form 'lead=1' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=Trivy Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info' \
+      #- |
+      #  curl -X GET "${url}" -H "Authorization:${Defectdojo_token}" \
+      - response= |
+        curl -s -H "Authorization:${Defectdojo_token}" -X GET "$url" -o trivys.json
+      #- ls -l
+      #- cat > trivys.json
+      #- trivys.json="$response"
+      #- cat trivys.json
+      - count_high=0
+      - count_medium=0
+      - |
+          for i in $(seq 0 $(($(echo "$trivys.json" | jq '.results | length') - 1))); do
+            found_by=$(echo "$trivys.json" | jq -r ".results[$i].found_by");
+            severity=$(echo "$trivys.json" | jq -r ".results[$i].severity");
+            
+            # Check if the severity is numeric before incrementing
+            if [[ "$severity" =~ ^[0-9]+$ ]]; then
+              if [ "$found_by" = "[76]" ]; then
+                if [ "$severity" -eq 1 ]; then
+                  count_high=$((count_high+1))
+                elif [ "$severity" -eq 2 ]; then
+                  count_medium=$((count_medium+1))
+                fi
+              else
+                echo "There are no high/medium findings, so the pipeline continues."
+              fi
+            fi
+          done
+      - echo "High Count is $count_high"
+      - echo "Medium Count is $count_medium"
+      - |
+         if [ $count_high -gt 5 ]; then
+           echo "More than 5 high severity findings, terminating pipeline"
+           exit 1
+         elif [ $count_medium -gt 10 ]; then
+          echo "More than 10 medium severity findings, terminating pipeline"
+          exit 1
+         fi
+  post_build:
+    commands:
+      - echo "This is the post build stage"
+      - echo "Pushed reports to Defectdojo"
+artifacts:
+  files: trivy.json
