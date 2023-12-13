@@ -1,0 +1,224 @@
+version: 0.2
+env:
+  variables:
+    Defectdojo_url: http://10.238.69.213:8080/
+    Defectdojo_token: Token c0f8a858db5026523de359bf315d8284f30f9aa8
+    Path: /usr/bin/trivy
+    target_url: "http://10.238.69.213:8080"
+    Nmap: "http://10.238.69.213"
+phases:
+  install:
+    runtime-versions:
+      python: 3.11
+      # Below is the runtime for Dependency-check
+      java: corretto17
+    commands:
+      # Below are the installation steps for detect-secrets
+      - apt update
+      - apt install python3 -y
+      - apt install python3-pip -y
+      - pip3 install detect-secrets
+      # Below are the installation steps for Dependency-check
+      - echo "install phase....."
+      - apt update
+      - apt install openjdk-17-jdk -y
+      - java --version
+      - apt update
+      - apt install maven -y
+      # Below are the installation steps for trivy tool
+      - apt-get update
+      - apt-get install -y wget apt-transport-https gnupg lsb-release
+      - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+      - echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+      - apt-get update
+      - apt-get install -y trivy
+      - whereis trivy
+  pre_build:
+    commands:
+      - echo "Perform pre-build steps here"
+      #- mvn -v
+      #- mvn clean package
+      - mkdir -p code && rsync -av $CODEBUILD_SRC_DIR/* code/ --exclude infra --exclude lambda-functions --exclude code
+      - wget https://github.com/jeremylong/DependencyCheck/releases/download/v7.4.0/dependency-check-7.4.0-release.zip
+      - unzip dependency-check-7.4.0-release.zip
+      - rm dependency-check-7.4.0-release.zip
+      - chmod -R 775 $CODEBUILD_SRC_DIR/dependency-check/bin/dependency-check.sh
+      - echo "stage pre_build completed..."
+      - trivy --version
+      - detect-secrets --version
+  build:
+    commands:
+      #Secret-scanning started using detect-secrets tool
+      #- git clone --branch master https://github.com/Akshay0570/ray-llm.git
+      - rm gitsecret_report.json || true
+      - detect-secrets scan --all-files > .secrets.baseline
+      - detect-secrets -C . scan > gitsecret_report.json
+      - cat gitsecret_report.json || true
+      - echo Build completed on `date`
+      - echo CODEBUILD_SRC_DIR
+      - FILE_PATH=$CODEBUILD_SRC_DIR/gitsecret_report.json
+      - echo "File path is $FILE_PATH"
+      - chmod 777 $FILE_PATH
+      - pwd
+      - ls -l 
+      - date +'YYYY-MM-DD' > date.txt
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - |
+         curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization: ${Defectdojo_token}" -F "file=@gitsecret_report.json" \
+         --form 'engagement=3' \
+         --form 'verified=true' \
+         --form 'active=true' \
+         --form 'lead=1' \
+         --form 'product_name=test-code' \
+         --form "tags=$BUILD_NUMBER" \
+         --form 'scan_type=Detect-secrets Scan' \
+         --form 'skip_duplicates=true' \
+         --form 'close_old_findings=false' \
+         --form 'minimum_severity=Info'\
+      # Dependency-scan using OWASp-Dependency-check tool
+      - git clone https://github.com/Akshay0570/ray-llm.git
+      - cd dependency-check/bin
+      - $CODEBUILD_SRC_DIR/dependency-check/bin/dependency-check.sh --project "Python" --prettyPrint --format XML --scan $CODEBUILD_SRC_DIR/ray-llm
+      - echo "OWASP dependency check analysis status is completed..."; 
+      - ls -lrt  
+      - pwd  
+      - cat dependency-check-report.xml
+      #- chmod 775 *
+      - if( cat dependency-check-report.xml | grep -i highest); then high_risk_dependency="yes"; else high_risk_dependency="no"; fi
+      - echo "high depednecy are " $high_risk_dependency
+      - echo "risk is " $risk
+      - echo Build completed on `date`
+      - echo $CODEBUILD_SRC_DIR
+      #- export FILE_PATH=dependency-check-report.json
+      - echo "File path is $FILE_PATH"
+      #- chmod 777 dependency-check-report.json 
+      - ls -l 
+      - date +'YYYY-MM-DD' > date.txt
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - ls -l
+      - cat dependency-check-report.xml 
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_Token}" -F "file=@dependency-check-report.xml" \
+        --form 'engagement=3' \
+        --form 'verified=True' \
+        --form 'active=True' \
+        --form 'lead=1' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=Dependency Check Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info' \
+      #- chmod 777 $FILE_PATH
+      #- ls -l 
+      #Image-scanning started using trivy tool
+      - echo "Perform build steps here"
+      - sudo su
+      - git clone https://github.com/Akshay0570/ray-llm.git
+      - $Path conf -f json -o trivys.json ${CODEBUILD_SRC_DIR}/ray-llm/Dockerfile
+      - pwd
+      - ls -l
+      - chmod 777 trivys.json
+      - echo "File path is $FILE_PATH"
+      - pwd
+      - ls -l 
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      #- cat trivys.json
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@trivys.json" \
+        --form 'engagement=3' \
+        --form 'verified=true' \
+        --form 'active=true' \
+        --form 'lead=1' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=Trivy Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info' \
+      # DAST scan started using ZAP tool
+      - rm -f zap_report.xml || true
+      - ls -lrth
+      - docker run -u $(id -u):$(id -g) -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      #- docker run -v $(pwd):/zap/wrk/:rw -t owasp/zap2docker-stable zap-baseline.py -t $target_url -g gen.conf -I -x zap_report.xml || true
+      #- docker run --user $(id -u):$(id -g) -v $(pwd):/zap/wrk/:rw --rm -t owasp/zap2docker-stable zap-full-scan.py -t $target_url -g gen.conf -x zap_report.xml || true
+      #- docker start owasp/zap2docker-stable
+      - cat zap_report.xml
+      - ls -l
+      - echo $CODEBUILD_SRC_DIR
+      #- echo "File path is $FILE_PATH"
+      - chmod 777 zap_report.xml 
+      - ls -l 
+      - date +'YYYY-MM-DD' > date.txt
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@zap_report.xml" \
+        --form 'engagement=3' \
+        --form 'verified=True' \
+        --form 'active=True' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=ZAP Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info'\
+      #Port scan started using Nmap tool
+      - echo "Perform build steps here"
+      - echo $CODEBUILD_SRC_DIR
+      - mkdir -p $CODEBUILD_SRC_DIR/Nmap
+      - chmod -R 777 $CODEBUILD_SRC_DIR/Nmap  # Adjust permissions as needed
+      - docker run --rm --user=root -v $CODEBUILD_SRC_DIR:/data uzyexe/nmap -sS -sV -oX /data/Nmap/nmap $Nmap
+      #- docker run --rm uzyexe/nmap -sS -sV -oX /data/Nmap/nmap $Nmap
+      #- mkdir Nmap
+      #- rm -f nmap* || true
+      #- docker run --rm -v $CODEBUILD_SRC_DIR:/data uzyexe/nmap -sS -sV -oX $CODEBUILD_SRC_DIR/Nmap/nmap $Nmap
+      - ls -l
+      #- cat nmap
+      #- ls -l
+      - BUILD_NUMBER=$CODEBUILD_BUILD_NUMBER
+      - echo $BUILD_NUMBER
+      - |
+        curl -X POST "${Defectdojo_url}/api/v2/import-scan/" -H "Authorization:${Defectdojo_token}" -F "file=@$CODEBUILD_SRC_DIR/Nmap/nmap" \
+        --form 'engagement=3' \
+        --form 'verified=True' \
+        --form 'active=True' \
+        --form 'product_name=test-code' \
+        --form "tags=$BUILD_NUMBER" \
+        --form 'scan_type=Nmap Scan' \
+        --form 'skip_duplicates=true' \
+        --form 'close_old_findings=false' \
+        --form 'minimum_severity=Info'\
+  post_build:
+    commands:
+      - echo "This is thpost build stage"
+      - echo "Pushed reports to Defectdojo"
+      - echo "Perform post-build steps here"
+      - echo "port scan is completed"
+artifacts:
+  files:
+    - '**.*'
+  secondary-artifacts:
+    artifact1:
+      base-directory: $CODEBUILD_SRC_DIR_source
+      files:
+        - gitsecret_report.json
+    artifact2:
+      base-directory: $CODEBUILD_SRC_DIR_source
+      files:
+        - dependency-check-report.xml 
+    artifact3:
+      base-directory: $CODEBUILD_SRC_DIR_source
+      files:
+        - trivys.json 
+    artifact4:
+      base-directory: $CODEBUILD_SRC_DIR_source
+      files:
+        - zap_report.xml
+    artifact4:
+      base-directory: $$CODEBUILD_SRC_DIR/Nmap
+      files:
+        - nmap
